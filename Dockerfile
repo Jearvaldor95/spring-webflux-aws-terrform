@@ -3,7 +3,7 @@ WORKDIR /build
 COPY . .
 RUN mvn clean package -DskipTests
 
-FROM openjdk:17-jdk-slim
+FROM eclipse-temurin:17-jdk-jammy
 WORKDIR /app
 COPY target/test-accenture-0.0.1-SNAPSHOT.jar test-accenture.app
 EXPOSE 8080
