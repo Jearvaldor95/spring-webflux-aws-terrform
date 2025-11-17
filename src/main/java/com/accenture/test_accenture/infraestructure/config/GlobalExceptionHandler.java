@@ -1,5 +1,6 @@
 package com.accenture.test_accenture.infraestructure.config;
 
+import com.accenture.test_accenture.infraestructure.exceptions.AlreadyExistException;
 import com.accenture.test_accenture.infraestructure.exceptions.ErrorResponse;
 import com.accenture.test_accenture.infraestructure.exceptions.NotFoundException;
 
@@ -44,5 +45,12 @@ public class GlobalExceptionHandler {
         return Mono.just(
                 new ErrorResponse("METHOD_NOT_ALLOWED", ex.getMessage(), HttpStatus.METHOD_NOT_ALLOWED.value()));
 
+    }
+
+    @ExceptionHandler(AlreadyExistException.class)
+    public Mono<ErrorResponse> handlerAlreadyException(AlreadyExistException ex){
+        return Mono.just(
+                new ErrorResponse("CONFLICT", ex.getMessage(), HttpStatus.CONFLICT.value())
+        );
     }
 }

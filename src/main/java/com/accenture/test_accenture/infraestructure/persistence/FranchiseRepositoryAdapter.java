@@ -4,6 +4,7 @@ import com.accenture.test_accenture.application.port.ProductBranch;
 import com.accenture.test_accenture.application.port.out.FranchiseOutPort;
 import com.accenture.test_accenture.domain.Branch;
 import com.accenture.test_accenture.domain.Franchise;
+import com.accenture.test_accenture.infraestructure.exceptions.AlreadyExistException;
 import com.accenture.test_accenture.infraestructure.exceptions.NotFoundException;
 import com.accenture.test_accenture.infraestructure.mappers.FranchiseMapper;
 import com.accenture.test_accenture.infraestructure.persistence.entities.FranchiseEntity;
@@ -36,7 +37,11 @@ public class FranchiseRepositoryAdapter implements FranchiseOutPort {
     @Override
     public Mono<Franchise> save(Franchise franchise) {
         FranchiseEntity franchiseEntity = franchiseMapper.toEntity(franchise);
-        return franchiseRepository.save(franchiseEntity)
+        return franchiseRepository.existsByName(franchise.name())
+                .flatMap(exists -> exists
+                        ? Mono.error(new AlreadyExistException("Franchise already exists"))
+                        : franchiseRepository.save(franchiseEntity)
+                )
                 .map(franchiseMapper::toDomain);
     }
 
