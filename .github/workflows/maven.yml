@@ -1,66 +1,132 @@
-name: Java CI/CD to Azure Web App
+name: CI/CD - Terraform + AWS
 
 on:
   push:
-    branches:
-      - main
+    branches: ["main"]
 
 jobs:
-  build-and-deploy:
+  # CI - Compilación y pruebas
+  ci:
     runs-on: ubuntu-latest
 
-    # Variables de entorno
+    services:
+      mysqldb:
+        image: mysql:8
+        env:
+          MYSQL_ROOT_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          MYSQL_DATABASE: ${{ secrets.DB_NAME }}
+          MYSQL_USER: ${{ secrets.DB_USERNAME }}
+          MYSQL_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -u ${{ secrets.DB_USERNAME }} -p${{ secrets.DB_PASSWORD }}"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
     env:
-      R2DBC_URL: ${{ secrets.R2DBC_URL }}
-      USERNAME_DEV: ${{ secrets.USERNAME_DEV }}
-      PASSWORD_DEV: ${{ secrets.PASSWORD_DEV }}
-      SPRING_PROFILES_ACTIVE: dev
+        R2DBC_URL: ${{ secrets.R2DBC_URL }}
+        USERNAME_PROD: ${{ secrets.DB_USERNAME }}
+        PASSWORD_PROD: ${{ secrets.DB_PASSWORD }}
+        SPRING_PROFILES_ACTIVE: ${{ secrets.SPRING_PROFILES_ACTIVE }}
 
     steps:
-      # 1️ Clonar repo
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      # 2️ Configurar JDK 17
-      - name: Set up JDK 17
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
           distribution: 'temurin'
+          java-version: '17'
           cache: maven
 
-      # 3️ Build y test Maven
       - name: Build with Maven
-        run: mvn clean install
+        run: mvn clean install -DskipTests
 
       - name: Run Tests
         run: mvn test
 
-      # 4️ Login a Azure (Service Principal)
-      - name: Login to Azure
-        uses: azure/login@v1
+      - name: Upload JAR
+        uses: actions/upload-artifact@v4
         with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          name: app-jar
+          path: target/*.jar
 
-      # 5️ Login a ACR
-      - name: Login to Azure Container Registry
+  terraform:
+    needs: ci
+    runs-on: ubuntu-latest
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        run: terraform -chdir=terraform init
+
+      - name: Terraform Plan
+        run: terraform -chdir=terraform plan
+
+      - name: Terraform Apply
+        run: terraform -chdir=terraform apply -auto-approve
+
+  deploy:
+    needs: terraform
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      ECR_REPO: ${{ secrets.ECR_REPO }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to ECR
         run: |
-          echo ${{ secrets.ACR_PASSWORD }} | docker login accentureacr.azurecr.io -u ${{ secrets.ACR_USERNAME }} --password-stdin
+          aws ecr get-login-password --region $AWS_REGION | docker login \
+          --username AWS --password-stdin $ECR_REPO
 
-      # 6️ Build Docker image
-      - name: Build Docker image
-        run: docker build -t accentureacr.azurecr.io/test-accenture:latest .
-
-      # 7️ Push Docker image
-      - name: Push Docker image
-        run: docker push accentureacr.azurecr.io/test-accenture:latest
-
-      # 8️ Deploy en Azure Web App usando la nueva sintaxis
-      - name: Deploy to Azure Web App
+      - name: Build Docker Image
         run: |
-         az webapp config container set \
-            --name test-accenture-app \
-            --resource-group test-accenture-rg \
-            --container-image-name accentureacr.azurecr.io/test-accenture:latest \
-            --container-registry-url https://accentureacr.azurecr.io \
-            --container-registry-user ${{ secrets.ACR_USERNAME }} \
-            --container-registry-password ${{ secrets.ACR_PASSWORD }}
+         docker build -t app-webflux .
+          docker tag app-webflux:latest $ECR_REPO:latest
+
+      - name: Push to ECR
+        run: docker push $ECR_REPO:latest
+
+      - name: Upload docker-compose.prod.yml to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: "docker-compose.yml"
+          target: "~/"
+
+      - name: Deploy in EC2
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            cd ~
+            docker login -u AWS -p $(aws ecr get-login-password --region $AWS_REGION) $ECR_REPO
+            docker pull $ECR_REPO:latest
+            docker compose --env-file .env -f docker-compose.yml down || true
+            docker compose --env-file .env -f docker-compose.yml up -d --force-recreate
