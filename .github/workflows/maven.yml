@@ -26,10 +26,10 @@ jobs:
           --health-retries=5
 
     env:
-        R2DBC_URL: ${{ secrets.R2DBC_URL }}
-        USERNAME_PROD: ${{ secrets.DB_USERNAME }}
-        PASSWORD_PROD: ${{ secrets.DB_PASSWORD }}
-        SPRING_PROFILES_ACTIVE: ${{ secrets.SPRING_PROFILES_ACTIVE }}
+      R2DBC_URL: ${{ secrets.R2DBC_URL }}
+      USERNAME_PROD: ${{ secrets.DB_USERNAME }}
+      PASSWORD_PROD: ${{ secrets.DB_PASSWORD }}
+      SPRING_PROFILES_ACTIVE: ${{ secrets.SPRING_PROFILES_ACTIVE }}
 
     steps:
       - name: Checkout
