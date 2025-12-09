@@ -10,16 +10,17 @@ jobs:
     runs-on: ubuntu-latest
 
     services:
-      postgres:
+      mysqldb:
         image: mysql:8
         env:
-          POSTGRES_USER: ${{ secrets.DB_USERNAME }}
-          POSTGRES_PASSWORD: ${{ secrets.DB_PASSWORD }}
-          POSTGRES_DB: ${{ secrets.DB_NAME }}
+          MYSQL_ROOT_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          MYSQL_DATABASE: ${{ secrets.DB_NAME }}
+          MYSQL_USER: ${{ secrets.DB_USERNAME }}
+          MYSQL_PASSWORD: ${{ secrets.DB_PASSWORD }}
         ports:
           - 3306:3306
         options: >-
-          --health-cmd="pg_isready -U mysql
+          --health-cmd="mysqladmin ping -h localhost -u ${{ secrets.DB_USERNAME }} -p${{ secrets.DB_PASSWORD }}"
           --health-interval=10s
           --health-timeout=5s
           --health-retries=5
