@@ -20,7 +20,7 @@ jobs:
         ports:
           - 3306:3306
         options: >-
-          --health-cmd="mysqladmin ping -h localhost -u ${{ secrets.DB_USERNAME }} -p${{ secrets.DB_PASSWORD }}"
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -u${{ secrets.DB_USERNAME }} -p${{ secrets.DB_PASSWORD }}"
           --health-interval=10s
           --health-timeout=5s
           --health-retries=5
@@ -29,7 +29,7 @@ jobs:
       R2DBC_URL: ${{ secrets.R2DBC_URL }}
       USERNAME_PROD: ${{ secrets.DB_USERNAME }}
       PASSWORD_PROD: ${{ secrets.DB_PASSWORD }}
-      SPRING_PROFILES_ACTIVE: ${{ secrets.SPRING_PROFILES_ACTIVE }}
+      SPRING_PROFILES_ACTIVE: test
 
     steps:
       - name: Checkout
